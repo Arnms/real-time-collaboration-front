@@ -8,11 +8,12 @@
 
 @layer base {
   * {
-    @apply border-border;
+    border-color: rgb(229 231 235); /* border-gray-200 */
   }
 
   body {
-    @apply bg-gray-50 text-gray-900 font-sans;
+    @apply bg-gray-50 text-gray-900;
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
   }
 
   html {
@@ -21,25 +22,25 @@
 }
 
 @layer components {
-  /* 버튼 컴포넌트 */
-  .btn {
+  /* 버튼 컴포넌트 기본 스타일 */
+  .btn-base {
     @apply inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none;
   }
 
   .btn-primary {
-    @apply btn bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500;
+    @apply btn-base bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500;
   }
 
   .btn-secondary {
-    @apply btn bg-gray-200 text-gray-900 hover:bg-gray-300 focus:ring-gray-500;
+    @apply btn-base bg-gray-200 text-gray-900 hover:bg-gray-300 focus:ring-gray-500;
   }
 
   .btn-outline {
-    @apply btn border border-gray-300 bg-transparent hover:bg-gray-50 focus:ring-gray-500;
+    @apply btn-base border border-gray-300 bg-transparent hover:bg-gray-50 focus:ring-gray-500;
   }
 
-  /* 입력 필드 */
-  .input {
+  /* 입력 필드 기본 스타일 */
+  .input-base {
     @apply block w-full rounded-md border border-gray-300 px-3 py-2 text-sm placeholder-gray-400 shadow-sm transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500;
   }
 
@@ -50,7 +51,7 @@
 
   /* 사용자 아바타 */
   .user-avatar {
-    @apply inline-flex items-center justify-center rounded-full bg-gray-500 text-white text-sm font-medium;
+    @apply inline-flex items-center justify-center rounded-full text-white text-sm font-medium;
   }
 
   /* 로딩 스피너 */
@@ -60,7 +61,7 @@
 
   /* 실시간 인디케이터 */
   .online-indicator {
-    @apply inline-block w-2 h-2 bg-green-400 rounded-full animate-pulse-soft;
+    @apply inline-block w-2 h-2 bg-green-400 rounded-full;
   }
 
   /* 문서 에디터 */
@@ -90,5 +91,21 @@
   .scrollbar-thin::-webkit-scrollbar-thumb {
     background-color: rgb(156 163 175);
     border-radius: 3px;
+  }
+
+  /* 애니메이션 유틸리티 */
+  .animate-pulse-soft {
+    animation: pulseSoft 2s infinite;
+  }
+}
+
+/* 키프레임 정의 */
+@keyframes pulseSoft {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
   }
 }
