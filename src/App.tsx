@@ -1,8 +1,13 @@
-// src/App.tsx (임시 테스트용)
-import UITestPage from "./components/ui/UItestPage";
+import React from "react";
+import { AppProviders } from "./providers/AppProviders";
+import { AppRouter } from "./components/AppRouter";
 
 function App() {
-  return <UITestPage />;
+  return (
+    <AppProviders>
+      <AppRouter />
+    </AppProviders>
+  );
 }
 
 export default App;
