@@ -160,6 +160,25 @@ export class DocumentsService {
       isTemplate: false,
     });
   }
+
+  // 문서 복제
+  static async duplicateDocument(
+    documentId: string,
+    title: string
+  ): Promise<Document> {
+    const originalDocument = await this.getDocument(documentId);
+
+    return this.createDocument({
+      title,
+      content: originalDocument.content,
+      metadata: {
+        ...originalDocument.metadata,
+        originalDocument: documentId,
+      },
+      isPublic: false, // 복제된 문서는 기본적으로 비공개
+      isTemplate: false, // 복제된 문서는 일반 문서로
+    });
+  }
 }
 
 export default DocumentsService;
