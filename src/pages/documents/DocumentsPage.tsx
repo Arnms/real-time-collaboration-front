@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   PlusIcon,
   ArrowLeftIcon,
-  ShareIcon,
-  TrashIcon,
-  DocumentDuplicateIcon,
+  DocumentTextIcon,
 } from "@heroicons/react/24/outline";
 import { Button, Modal } from "@/components/ui";
 import { useAuth } from "@/hooks/useAuth";
@@ -14,12 +12,16 @@ import {
   useMyDocuments,
   useSharedDocuments,
   usePublicDocuments,
+  useDeleteDocument,
+  useDuplicateDocument,
 } from "@/hooks/useDocuments";
 import { DocumentList } from "./components/DocumentList";
 import {
   DocumentFilters,
   type DocumentFilters as DocumentFiltersType,
 } from "./components/DocumentFilters";
+import { CreateDocumentModal } from "./components/CreateDocumentModal";
+import { CreateFromTemplateModal } from "./components/CreateFromTemplateModal";
 import type { Document } from "@/types/document.types";
 import { cn } from "@/utils/cn";
 
@@ -28,6 +30,7 @@ type TabType = "my" | "shared" | "public" | "templates";
 const DocumentsPage: React.FC = () => {
   const { user } = useAuth();
   const toast = useToastContext();
+  const navigate = useNavigate();
 
   // 상태 관리
   const [activeTab, setActiveTab] = useState<TabType>("my");
@@ -35,11 +38,20 @@ const DocumentsPage: React.FC = () => {
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(
     null
   );
+
+  // 모달 상태
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showCreateFromTemplateModal, setShowCreateFromTemplateModal] =
+    useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
+  // Mutation 훅들
+  const deleteDocumentMutation = useDeleteDocument();
+  const duplicateDocumentMutation = useDuplicateDocument();
+
   // 필터 상태
-  const [filters, setFilters] = useState<DocumentFiltersType>({
+  const [filters, setFilters] = useState<DocumentFilters>({
     search: "",
     sortBy: "updatedAt",
     sortOrder: "DESC",
@@ -128,6 +140,19 @@ const DocumentsPage: React.FC = () => {
   ];
 
   // 이벤트 핸들러들
+  const handleCreateDocument = () => {
+    setShowCreateModal(true);
+  };
+
+  const handleCreateFromTemplate = () => {
+    setShowCreateFromTemplateModal(true);
+  };
+
+  const handleDocumentCreated = (documentId: string) => {
+    // 생성된 문서로 이동
+    navigate(`/documents/${documentId}`);
+  };
+
   const handleShare = (document: Document) => {
     setSelectedDocument(document);
     setShowShareModal(true);
@@ -138,22 +163,73 @@ const DocumentsPage: React.FC = () => {
     setShowDeleteModal(true);
   };
 
-  const handleDuplicate = (document: Document) => {
-    // TODO: 문서 복제 기능 구현
-    toast.info("준비 중", "문서 복제 기능은 곧 구현될 예정입니다.");
+  const handleDuplicate = async (document: Document) => {
+    try {
+      const duplicatedDocument = await duplicateDocumentMutation.mutateAsync({
+        documentId: document.id,
+        title: `${document.title} - 복사본`,
+      });
+
+      toast.success("문서 복제 완료", "문서가 성공적으로 복제되었습니다.");
+
+      // 복제된 문서로 이동할지 물어보기
+      const shouldNavigate = window.confirm("복제된 문서로 이동하시겠습니까?");
+      if (shouldNavigate) {
+        navigate(`/documents/${duplicatedDocument.id}`);
+      }
+    } catch (error: any) {
+      toast.error(
+        "문서 복제 실패",
+        error.message || "문서 복제 중 오류가 발생했습니다."
+      );
+    }
   };
 
   const confirmDelete = async () => {
     if (!selectedDocument) return;
 
     try {
-      // TODO: 삭제 API 호출
+      await deleteDocumentMutation.mutateAsync(selectedDocument.id);
       toast.success("삭제 완료", "문서가 성공적으로 삭제되었습니다.");
       setShowDeleteModal(false);
       setSelectedDocument(null);
       currentQuery.refetch();
-    } catch (error) {
-      toast.error("삭제 실패", "문서 삭제 중 오류가 발생했습니다.");
+    } catch (error: any) {
+      toast.error(
+        "삭제 실패",
+        error.message || "문서 삭제 중 오류가 발생했습니다."
+      );
+    }
+  };
+
+  // 헬퍼 함수들
+  const getEmptyMessage = (): string => {
+    switch (activeTab) {
+      case "my":
+        return "문서가 없습니다";
+      case "shared":
+        return "공유받은 문서가 없습니다";
+      case "public":
+        return "공개 문서가 없습니다";
+      case "templates":
+        return "템플릿이 없습니다";
+      default:
+        return "문서가 없습니다";
+    }
+  };
+
+  const getEmptyDescription = (): string => {
+    switch (activeTab) {
+      case "my":
+        return "새로운 문서를 만들어보세요.";
+      case "shared":
+        return "다른 사용자가 문서를 공유하면 여기에 표시됩니다.";
+      case "public":
+        return "공개된 문서들을 찾을 수 없습니다.";
+      case "templates":
+        return "사용 가능한 템플릿이 없습니다.";
+      default:
+        return "새로운 문서를 만들어보세요.";
     }
   };
 
@@ -179,14 +255,22 @@ const DocumentsPage: React.FC = () => {
               <h1 className="text-xl font-semibold text-gray-900">문서 관리</h1>
             </div>
 
-            <Button
-              leftIcon={<PlusIcon className="w-4 h-4" />}
-              onClick={() =>
-                toast.info("준비 중", "문서 생성 기능은 곧 구현될 예정입니다.")
-              }
-            >
-              새 문서
-            </Button>
+            <div className="flex items-center space-x-2">
+              <Button
+                leftIcon={<PlusIcon className="w-4 h-4" />}
+                onClick={handleCreateDocument}
+              >
+                새 문서
+              </Button>
+
+              <Button
+                variant="outline"
+                leftIcon={<DocumentTextIcon className="w-4 h-4" />}
+                onClick={handleCreateFromTemplate}
+              >
+                템플릿에서 만들기
+              </Button>
+            </div>
           </div>
         </div>
       </header>
@@ -263,6 +347,20 @@ const DocumentsPage: React.FC = () => {
         )}
       </main>
 
+      {/* 문서 생성 모달 */}
+      <CreateDocumentModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onSuccess={handleDocumentCreated}
+      />
+
+      {/* 템플릿에서 문서 생성 모달 */}
+      <CreateFromTemplateModal
+        isOpen={showCreateFromTemplateModal}
+        onClose={() => setShowCreateFromTemplateModal(false)}
+        onSuccess={handleDocumentCreated}
+      />
+
       {/* 공유 모달 */}
       <Modal
         isOpen={showShareModal}
@@ -303,10 +401,19 @@ const DocumentsPage: React.FC = () => {
         title="문서 삭제"
         footer={
           <div className="flex justify-end space-x-3">
-            <Button variant="outline" onClick={() => setShowDeleteModal(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteModal(false)}
+              disabled={deleteDocumentMutation.isPending}
+            >
               취소
             </Button>
-            <Button variant="danger" onClick={confirmDelete}>
+            <Button
+              variant="danger"
+              onClick={confirmDelete}
+              loading={deleteDocumentMutation.isPending}
+              disabled={deleteDocumentMutation.isPending}
+            >
               삭제
             </Button>
           </div>
@@ -325,37 +432,6 @@ const DocumentsPage: React.FC = () => {
       </Modal>
     </div>
   );
-
-  // 헬퍼 함수들
-  function getEmptyMessage(): string {
-    switch (activeTab) {
-      case "my":
-        return "문서가 없습니다";
-      case "shared":
-        return "공유받은 문서가 없습니다";
-      case "public":
-        return "공개 문서가 없습니다";
-      case "templates":
-        return "템플릿이 없습니다";
-      default:
-        return "문서가 없습니다";
-    }
-  }
-
-  function getEmptyDescription(): string {
-    switch (activeTab) {
-      case "my":
-        return "새로운 문서를 만들어보세요.";
-      case "shared":
-        return "다른 사용자가 문서를 공유하면 여기에 표시됩니다.";
-      case "public":
-        return "공개된 문서들을 찾을 수 없습니다.";
-      case "templates":
-        return "사용 가능한 템플릿이 없습니다.";
-      default:
-        return "새로운 문서를 만들어보세요.";
-    }
-  }
 };
 
 export default DocumentsPage;
