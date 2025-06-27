@@ -263,3 +263,24 @@ export const useCreateFromTemplate = () => {
     },
   });
 };
+
+// 문서 복제
+export const useDuplicateDocument = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      documentId,
+      title,
+    }: {
+      documentId: string;
+      title: string;
+    }) => DocumentsService.duplicateDocument(documentId, title),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.documents.lists() });
+    },
+    onError: (error: ApiError) => {
+      console.error("Document duplication failed:", error);
+    },
+  });
+};
