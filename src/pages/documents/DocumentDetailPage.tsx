@@ -11,6 +11,7 @@ import {
 import { Button, Modal, Input, Spinner } from "@/components/ui";
 import { useAuth } from "@/hooks/useAuth";
 import { useToastContext } from "@/providers/ToastProvider";
+import { useCollaboration } from "@/hooks/useCollaboration";
 import {
   useDocument,
   useUpdateDocument,
@@ -35,26 +36,10 @@ const DocumentDetailPage: React.FC = () => {
   const [documentContent, setDocumentContent] = useState("");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
-
-  // 실시간 협업 상태 (임시 데이터)
-  const [onlineUsers] = useState([
-    {
-      id: "user1",
-      username: "Alice",
-      color: "#FF6B6B",
-      isTyping: false,
-    },
-    {
-      id: "user2",
-      username: "Bob",
-      color: "#4ECDC4",
-      isTyping: true,
-    },
-  ]);
-  const [connectionStatus] = useState<
-    "connected" | "connecting" | "disconnected"
-  >("connected");
-  const [lastSyncTime] = useState(new Date());
+  const [isTyping, setIsTyping] = useState(false);
+  const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(
+    null
+  );
 
   // API 훅들
   const documentQuery = useDocument(id!, !!id);
@@ -62,6 +47,19 @@ const DocumentDetailPage: React.FC = () => {
   const updateDocumentMutation = useUpdateDocument(id!);
   const deleteDocumentMutation = useDeleteDocument();
   const duplicateDocumentMutation = useDuplicateDocument();
+
+  // 실시간 협업 훅
+  const collaboration = useCollaboration({
+    documentId: id!,
+    enabled: !!id && !!documentQuery.data,
+    onDocumentUpdate: (content, version) => {
+      setDocumentContent(content);
+      // 버전도 업데이트할 수 있지만, 여기서는 간단히 content만 업데이트
+    },
+    onError: (error) => {
+      toast.error("실시간 동기화 오류", error);
+    },
+  });
 
   const document = documentQuery.data;
   const permission = permissionQuery.data?.permission;
@@ -82,9 +80,46 @@ const DocumentDetailPage: React.FC = () => {
   }, [document]);
 
   // 문서 내용 변경 핸들러
-  const handleContentChange = useCallback((newContent: string) => {
-    setDocumentContent(newContent);
-  }, []);
+  const handleContentChange = useCallback(
+    (newContent: string) => {
+      setDocumentContent(newContent);
+
+      // 타이핑 상태 전송
+      if (!isTyping && collaboration.isConnected) {
+        setIsTyping(true);
+        collaboration.sendTypingStatus(true);
+      }
+
+      // 타이핑 중지 타이머 설정
+      if (typingTimeout) {
+        clearTimeout(typingTimeout);
+      }
+
+      const timeout = setTimeout(() => {
+        setIsTyping(false);
+        if (collaboration.isConnected) {
+          collaboration.sendTypingStatus(false);
+        }
+      }, 1000);
+
+      setTypingTimeout(timeout);
+
+      // 실시간 변경사항 전송 (간단한 버전)
+      if (collaboration.isConnected) {
+        // TODO: 실제로는 여기서 Operational Transformation 적용 필요
+        // 지금은 간단하게 전체 텍스트 변경으로 처리
+        collaboration.sendTextChange(
+          {
+            type: "insert",
+            position: 0,
+            content: newContent,
+          },
+          document?.version || 1
+        );
+      }
+    },
+    [isTyping, typingTimeout, collaboration, document?.version]
+  );
 
   // 제목 변경 핸들러
   const handleTitleChange = async () => {
@@ -320,10 +355,12 @@ const DocumentDetailPage: React.FC = () => {
 
       {/* 하단 협업 상태 */}
       <CollaborationStatus
-        onlineUsers={onlineUsers}
-        connectionStatus={connectionStatus}
-        documentVersion={document.version}
-        lastSyncTime={lastSyncTime}
+        onlineUsers={collaboration.onlineUsers}
+        connectionStatus={collaboration.connectionStatus}
+        documentVersion={
+          collaboration.documentVersion || document?.version || 1
+        }
+        lastSyncTime={collaboration.lastSyncTime}
       />
 
       {/* 공유 모달 */}
