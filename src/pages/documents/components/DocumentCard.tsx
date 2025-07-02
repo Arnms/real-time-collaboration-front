@@ -16,8 +16,10 @@ import type { Document } from "@/types/document.types";
 interface DocumentCardProps {
   document: Document;
   onShare?: (document: Document) => void;
+  onVisibilitySettings?: (document: Document) => void;
   onDelete?: (document: Document) => void;
   onDuplicate?: (document: Document) => void;
+  onNavigate?: (documentId: string) => void;
   showActions?: boolean;
   className?: string;
 }

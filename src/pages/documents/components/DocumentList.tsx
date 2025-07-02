@@ -10,8 +10,10 @@ interface DocumentListProps {
   emptyMessage?: string;
   emptyDescription?: string;
   onShare?: (document: Document) => void;
+  onVisibilitySettings?: (document: Document) => void;
   onDelete?: (document: Document) => void;
   onDuplicate?: (document: Document) => void;
+  onNavigate?: (documentId: string) => void;
   showActions?: boolean;
   viewMode?: "grid" | "list";
   className?: string;
@@ -24,8 +26,10 @@ const DocumentList: React.FC<DocumentListProps> = ({
   emptyMessage = "문서가 없습니다",
   emptyDescription = "새로운 문서를 만들어보세요.",
   onShare,
+  onVisibilitySettings,
   onDelete,
   onDuplicate,
+  onNavigate,
   showActions = true,
   viewMode = "grid",
   className,
@@ -111,8 +115,10 @@ const DocumentList: React.FC<DocumentListProps> = ({
             key={document.id}
             document={document}
             onShare={onShare}
+            onVisibilitySettings={onVisibilitySettings}
             onDelete={onDelete}
             onDuplicate={onDuplicate}
+            onNavigate={onNavigate}
             showActions={showActions}
           />
         ))}
@@ -128,8 +134,10 @@ const DocumentList: React.FC<DocumentListProps> = ({
           key={document.id}
           document={document}
           onShare={onShare}
+          onVisibilitySettings={onVisibilitySettings}
           onDelete={onDelete}
           onDuplicate={onDuplicate}
+          onNavigate={onNavigate}
           showActions={showActions}
           className="flex-row" // 리스트 모드용 스타일링
         />
