@@ -14,7 +14,7 @@ export interface Document {
   version: number;
   isPublic: boolean;
   isTemplate: boolean;
-  templateCategory?: string;
+  templateCategory?: string | null; // null 허용하도록 수정
   createdAt: string;
   updatedAt: string;
   owner: User;
