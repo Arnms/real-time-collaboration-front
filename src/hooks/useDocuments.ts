@@ -62,12 +62,12 @@ export const useDocument = (id: string, enabled = true) => {
   });
 };
 
-// 문서 권한 조회
-export const useDocumentPermissions = (id: string, enabled = true) => {
+// 문서 권한 목록 조회
+export const useDocumentPermissions = (documentId: string, enabled = true) => {
   return useQuery({
-    queryKey: queryKeys.documents.permissions(id),
-    queryFn: () => DocumentsService.getDocumentPermissions(id),
-    enabled: enabled && !!id,
+    queryKey: queryKeys.documents.permissions(documentId),
+    queryFn: () => DocumentsService.getDocumentPermissions(documentId),
+    enabled: enabled && !!documentId,
     staleTime: 2 * 60 * 1000,
   });
 };
@@ -157,16 +157,16 @@ export const useDeleteDocument = () => {
 };
 
 // 문서 공유
-export const useShareDocument = (id: string) => {
+export const useShareDocument = (documentId: string) => {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (data: ShareDocumentRequest) =>
-      DocumentsService.shareDocument(id, data),
+      DocumentsService.shareDocument(documentId, data),
     onSuccess: () => {
       // 문서 권한 목록 무효화
       queryClient.invalidateQueries({
-        queryKey: queryKeys.documents.permissions(id),
+        queryKey: queryKeys.documents.permissions(documentId),
       });
 
       // 공유받은 문서 목록 무효화 (다른 사용자 관점에서)
@@ -181,15 +181,15 @@ export const useShareDocument = (id: string) => {
 };
 
 // 문서 대량 공유
-export const useBulkShareDocument = (id: string) => {
+export const useBulkShareDocument = (documentId: string) => {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (data: { users: ShareDocumentRequest[] }) =>
-      DocumentsService.bulkShareDocument(id, data),
+      DocumentsService.bulkShareDocument(documentId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: queryKeys.documents.permissions(id),
+        queryKey: queryKeys.documents.permissions(documentId),
       });
       queryClient.invalidateQueries({
         queryKey: queryKeys.documents.list("shared"),
