@@ -3,7 +3,7 @@ export { DocumentList } from "./DocumentList";
 export { DocumentFilters } from "./DocumentFilters";
 export { CreateDocumentModal } from "./CreateDocumentModal";
 export { CreateFromTemplateModal } from "./CreateFromTemplateModal";
-export { DocumentEditor } from "./DocumentEditor";
+export { default as EnhancedDocumentEditor } from "./DocumentEditor";
 export { CollaborationStatus } from "./CollaborationStatus";
 export { default as DocumentShareModal } from "./DocumentShareModal";
 export { default as DocumentVisibilitySettings } from "./DocumentVisibilitySettings";

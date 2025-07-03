@@ -1,30 +1,32 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
-import {
-  ArrowLeftIcon,
-  ShareIcon,
-  EllipsisHorizontalIcon,
-  DocumentDuplicateIcon,
-  TrashIcon,
-  ClockIcon,
-} from "@heroicons/react/24/outline";
-import { Button, Modal, Input, Spinner } from "@/components/ui";
+import { Button, Input, Spinner, Modal } from "@/components/ui";
 import { useAuth } from "@/hooks/useAuth";
-import { useToastContext } from "@/providers/ToastProvider";
 import { useCollaboration } from "@/hooks/useCollaboration";
 import {
   useDocument,
+  useMyDocumentPermission,
   useUpdateDocument,
   useDeleteDocument,
   useDuplicateDocument,
-  useMyDocumentPermission,
 } from "@/hooks/useDocuments";
-import { DocumentEditor } from "./components/DocumentEditor";
-import { CollaborationStatus } from "./components/CollaborationStatus";
-import type { Document } from "@/types/document.types";
+import { useToastContext } from "@/providers/ToastProvider";
 import { cn } from "@/utils/cn";
+import {
+  CheckCircleIcon,
+  WifiIcon,
+  ExclamationTriangleIcon,
+  ArrowLeftIcon,
+  ClockIcon,
+  DocumentDuplicateIcon,
+  ShareIcon,
+  TrashIcon,
+  UserGroupIcon,
+} from "@heroicons/react/24/outline";
+import { useState, useEffect, useCallback } from "react";
+import { useParams, useNavigate, Link } from "react-router-dom";
+import { EnhancedDocumentEditor } from "./components";
+import { CollaboratorCursor } from "./components/DocumentEditor";
 
-const DocumentDetailPage: React.FC = () => {
+const EnhancedDocumentDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -40,6 +42,10 @@ const DocumentDetailPage: React.FC = () => {
   const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(
     null
   );
+  const [currentSelection, setCurrentSelection] = useState({
+    start: 0,
+    end: 0,
+  });
 
   // API 훅들
   const documentQuery = useDocument(id!, !!id);
@@ -54,7 +60,6 @@ const DocumentDetailPage: React.FC = () => {
     enabled: !!id && !!documentQuery.data,
     onDocumentUpdate: (content, version) => {
       setDocumentContent(content);
-      // 버전도 업데이트할 수 있지만, 여기서는 간단히 content만 업데이트
     },
     onError: (error) => {
       toast.error("실시간 동기화 오류", error);
@@ -78,6 +83,17 @@ const DocumentDetailPage: React.FC = () => {
       setDocumentContent(document.content);
     }
   }, [document]);
+
+  // 실시간 협업자들을 CollaboratorCursor 형태로 변환
+  const collaboratorCursors: CollaboratorCursor[] = collaboration.onlineUsers
+    .filter((collaborator) => collaborator.id !== user?.id)
+    .map((collaborator) => ({
+      id: collaborator.id,
+      username: collaborator.username,
+      color: collaborator.color,
+      position: Math.random() * 100,
+      isTyping: collaborator.isTyping,
+    }));
 
   // 문서 내용 변경 핸들러
   const handleContentChange = useCallback(
@@ -104,21 +120,39 @@ const DocumentDetailPage: React.FC = () => {
 
       setTypingTimeout(timeout);
 
-      // 실시간 변경사항 전송 (간단한 버전)
-      if (collaboration.isConnected) {
-        // TODO: 실제로는 여기서 Operational Transformation 적용 필요
-        // 지금은 간단하게 전체 텍스트 변경으로 처리
+      // 실시간 변경사항 전송
+      if (collaboration.isConnected && canEdit) {
         collaboration.sendTextChange(
           {
             type: "insert",
-            position: 0,
+            position: currentSelection.start,
             content: newContent,
           },
           document?.version || 1
         );
       }
     },
-    [isTyping, typingTimeout, collaboration, document?.version]
+    [
+      isTyping,
+      typingTimeout,
+      collaboration,
+      document?.version,
+      canEdit,
+      currentSelection,
+    ]
+  );
+
+  // 선택 영역 변경 핸들러
+  const handleSelectionChange = useCallback(
+    (selection: { start: number; end: number }) => {
+      setCurrentSelection(selection);
+
+      // 커서 위치 전송
+      if (collaboration.isConnected) {
+        collaboration.sendCursorPosition(selection.start, selection);
+      }
+    },
+    [collaboration]
   );
 
   // 제목 변경 핸들러
@@ -136,7 +170,7 @@ const DocumentDetailPage: React.FC = () => {
       toast.success("제목 변경", "문서 제목이 업데이트되었습니다.");
     } catch (error: any) {
       toast.error("제목 변경 실패", error.message);
-      setDocumentTitle(document.title); // 원래 제목으로 복원
+      setDocumentTitle(document.title);
       setIsEditingTitle(false);
     }
   };
@@ -149,9 +183,10 @@ const DocumentDetailPage: React.FC = () => {
       await updateDocumentMutation.mutateAsync({
         content: documentContent,
       });
+      toast.success("저장 완료", "문서가 저장되었습니다.");
     } catch (error: any) {
       toast.error("저장 실패", error.message);
-      throw error; // 에디터에서 에러 처리할 수 있도록
+      throw error;
     }
   };
 
@@ -200,6 +235,36 @@ const DocumentDetailPage: React.FC = () => {
     }
   };
 
+  // 연결 상태에 따른 스타일
+  const getConnectionStatusConfig = () => {
+    switch (collaboration.connectionStatus) {
+      case "connected":
+        return {
+          icon: CheckCircleIcon,
+          color: "text-green-600",
+          bgColor: "bg-green-100",
+          text: "실시간 연결됨",
+        };
+      case "connecting":
+        return {
+          icon: WifiIcon,
+          color: "text-yellow-600",
+          bgColor: "bg-yellow-100",
+          text: "연결 중...",
+        };
+      case "disconnected":
+        return {
+          icon: ExclamationTriangleIcon,
+          color: "text-red-600",
+          bgColor: "bg-red-100",
+          text: "연결 끊김",
+        };
+    }
+  };
+
+  const statusConfig = getConnectionStatusConfig();
+  const StatusIcon = statusConfig.icon;
+
   // 로딩 상태
   if (isLoading) {
     return (
@@ -218,19 +283,7 @@ const DocumentDetailPage: React.FC = () => {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4 mx-auto">
-            <svg
-              className="w-8 h-8 text-red-600"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
-              />
-            </svg>
+            <ExclamationTriangleIcon className="w-8 h-8 text-red-600" />
           </div>
           <h3 className="text-lg font-medium text-gray-900 mb-2">
             문서를 불러올 수 없습니다
@@ -272,7 +325,7 @@ const DocumentDetailPage: React.FC = () => {
                     onChange={(e) => setDocumentTitle(e.target.value)}
                     onBlur={handleTitleChange}
                     onKeyDown={handleTitleKeyDown}
-                    className="text-xl font-semibold border-0 px-0 focus:ring-0"
+                    className="text-xl font-semibold border-0 px-0 focus:ring-0 bg-transparent"
                     autoFocus
                     maxLength={200}
                   />
@@ -293,6 +346,46 @@ const DocumentDetailPage: React.FC = () => {
 
             {/* 오른쪽: 액션 버튼들 */}
             <div className="flex items-center space-x-2 flex-shrink-0">
+              {/* 실시간 상태 */}
+              <div className="hidden md:flex items-center space-x-2 text-sm mr-4">
+                <div
+                  className={cn(
+                    "flex items-center justify-center w-6 h-6 rounded-full",
+                    statusConfig.bgColor
+                  )}
+                >
+                  <StatusIcon className={cn("w-3 h-3", statusConfig.color)} />
+                </div>
+                <span className={cn("text-xs font-medium", statusConfig.color)}>
+                  {statusConfig.text}
+                </span>
+              </div>
+
+              {/* 협업자 표시 */}
+              {collaboration.onlineUsers.length > 0 && (
+                <div className="flex items-center space-x-1 mr-4">
+                  {collaboration.onlineUsers.slice(0, 3).map((collaborator) => (
+                    <div
+                      key={collaborator.id}
+                      className={cn(
+                        "w-6 h-6 rounded-full flex items-center justify-center text-xs text-white font-medium",
+                        collaborator.isTyping &&
+                          "ring-2 ring-blue-400 ring-opacity-75"
+                      )}
+                      style={{ backgroundColor: collaborator.color }}
+                      title={collaborator.username}
+                    >
+                      {collaborator.username.charAt(0).toUpperCase()}
+                    </div>
+                  ))}
+                  {collaboration.onlineUsers.length > 3 && (
+                    <span className="text-xs text-gray-500 ml-1">
+                      +{collaboration.onlineUsers.length - 3}
+                    </span>
+                  )}
+                </div>
+              )}
+
               {/* 문서 정보 */}
               <div className="hidden md:flex items-center space-x-4 text-sm text-gray-500 mr-4">
                 <div className="flex items-center space-x-1">
@@ -327,13 +420,17 @@ const DocumentDetailPage: React.FC = () => {
                 </Button>
               )}
 
-              {/* 더보기 메뉴 */}
-              <div className="relative">
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                  <EllipsisHorizontalIcon className="w-4 h-4" />
+              {canDelete && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowDeleteModal(true)}
+                  leftIcon={<TrashIcon className="w-4 h-4" />}
+                  className="border-red-300 text-red-600 hover:bg-red-50"
+                >
+                  삭제
                 </Button>
-                {/* TODO: 드롭다운 메뉴 구현 */}
-              </div>
+              )}
             </div>
           </div>
         </div>
@@ -341,60 +438,87 @@ const DocumentDetailPage: React.FC = () => {
 
       {/* 메인 에디터 */}
       <div className="flex-1 flex flex-col">
-        <DocumentEditor
+        <EnhancedDocumentEditor
           content={documentContent}
           onChange={handleContentChange}
           onSave={handleSave}
+          onSelectionChange={handleSelectionChange}
           readOnly={!canEdit}
           placeholder="문서 내용을 입력하세요..."
           autoSave={true}
           autoSaveInterval={3000}
+          collaborators={collaboratorCursors}
           className="flex-1"
         />
       </div>
 
       {/* 하단 협업 상태 */}
-      <CollaborationStatus
-        onlineUsers={collaboration.onlineUsers}
-        connectionStatus={collaboration.connectionStatus}
-        documentVersion={
-          collaboration.documentVersion || document?.version || 1
-        }
-        lastSyncTime={collaboration.lastSyncTime}
-      />
+      <div className="bg-white border-t border-gray-200 px-6 py-3">
+        <div className="flex items-center justify-between">
+          {/* 온라인 사용자 정보 */}
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
+              <UserGroupIcon className="w-4 h-4 text-gray-400" />
+              <span className="text-sm font-medium text-gray-700">
+                {collaboration.onlineUsers.length === 0
+                  ? "혼자 작업 중"
+                  : `${collaboration.onlineUsers.length}명이 함께 작업 중`}
+              </span>
+            </div>
 
-      {/* 공유 모달 */}
-      <Modal
-        isOpen={showShareModal}
-        onClose={() => setShowShareModal(false)}
-        title="문서 공유"
-        footer={
-          <div className="flex justify-end space-x-3">
-            <Button variant="outline" onClick={() => setShowShareModal(false)}>
-              취소
-            </Button>
-            <Button
-              onClick={() => {
-                toast.info("준비 중", "문서 공유 기능은 곧 구현될 예정입니다.");
-                setShowShareModal(false);
-              }}
-            >
-              공유하기
-            </Button>
+            {/* 타이핑 중인 사용자 */}
+            {collaboration.onlineUsers.some((u) => u.isTyping) && (
+              <div className="flex items-center space-x-2">
+                <div className="flex space-x-1">
+                  <div className="w-1 h-1 bg-blue-500 rounded-full animate-bounce" />
+                  <div className="w-1 h-1 bg-blue-500 rounded-full animate-bounce delay-100" />
+                  <div className="w-1 h-1 bg-blue-500 rounded-full animate-bounce delay-200" />
+                </div>
+                <span className="text-xs text-blue-600">
+                  {collaboration.onlineUsers
+                    .filter((u) => u.isTyping)
+                    .map((u) => u.username)
+                    .join(", ")}
+                  님이 입력 중...
+                </span>
+              </div>
+            )}
           </div>
-        }
-      >
-        <div className="space-y-4">
-          <p className="text-gray-600">
-            "{document.title}" 문서를 다른 사용자와 공유하세요.
-          </p>
-          <div className="p-4 bg-blue-50 rounded-lg">
-            <p className="text-sm text-blue-800">
-              💡 문서 공유 기능은 곧 구현될 예정입니다.
-            </p>
+
+          {/* 동기화 정보 */}
+          <div className="flex items-center space-x-4 text-xs text-gray-500">
+            <span>
+              버전 {collaboration.documentVersion || document.version}
+            </span>
+            {collaboration.lastSyncTime && (
+              <span>
+                {new Date(collaboration.lastSyncTime).toLocaleTimeString(
+                  "ko-KR",
+                  {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                  }
+                )}{" "}
+                동기화
+              </span>
+            )}
           </div>
         </div>
-      </Modal>
+
+        {/* 연결 문제 알림 */}
+        {collaboration.connectionStatus === "disconnected" && (
+          <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <ExclamationTriangleIcon className="w-4 h-4 text-red-600" />
+              <span className="text-sm text-red-800">
+                실시간 동기화가 중단되었습니다. 변경사항이 저장되지 않을 수
+                있습니다.
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* 삭제 확인 모달 */}
       <Modal
@@ -427,8 +551,75 @@ const DocumentDetailPage: React.FC = () => {
           </p>
           <div className="p-4 bg-red-50 rounded-lg">
             <p className="text-sm text-red-800">
-              ⚠️ 이 작업은 되돌릴 수 없습니다.
+              ⚠️ 이 작업은 되돌릴 수 없습니다. 모든 협업자의 접근도 차단됩니다.
             </p>
+          </div>
+        </div>
+      </Modal>
+
+      {/* 공유 모달 */}
+      <Modal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        title="문서 공유"
+        footer={
+          <div className="flex justify-end">
+            <Button variant="outline" onClick={() => setShowShareModal(false)}>
+              닫기
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-gray-600">
+            "{document.title}" 문서 공유 기능이 곧 구현될 예정입니다.
+          </p>
+          <div className="p-4 bg-blue-50 rounded-lg">
+            <div className="flex items-start space-x-2">
+              <CheckCircleIcon className="w-5 h-5 text-blue-600 mt-0.5" />
+              <div className="text-sm text-blue-800">
+                <p className="font-medium">현재 협업 중인 사용자</p>
+                <ul className="mt-1 list-disc list-inside space-y-1">
+                  {collaboration.onlineUsers.map((collaborator) => (
+                    <li key={collaborator.id}>
+                      {collaborator.username}
+                      {collaborator.isTyping && " (입력 중)"}
+                    </li>
+                  ))}
+                  {collaboration.onlineUsers.length === 0 && (
+                    <li>현재 온라인 사용자가 없습니다.</li>
+                  )}
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {/* 협업 기능 안내 */}
+          <div className="p-4 bg-green-50 rounded-lg">
+            <div className="text-sm text-green-800">
+              <p className="font-medium mb-2">🚀 현재 구현된 협업 기능</p>
+              <ul className="space-y-1 list-disc list-inside">
+                <li>실시간 온라인 사용자 표시</li>
+                <li>타이핑 상태 실시간 공유</li>
+                <li>사용자별 커서 색상 표시</li>
+                <li>자동 저장 및 동기화</li>
+                <li>연결 상태 모니터링</li>
+              </ul>
+            </div>
+          </div>
+
+          {/* 곧 추가될 기능 */}
+          <div className="p-4 bg-purple-50 rounded-lg">
+            <div className="text-sm text-purple-800">
+              <p className="font-medium mb-2">⏳ 곧 추가될 기능</p>
+              <ul className="space-y-1 list-disc list-inside">
+                <li>실시간 텍스트 변경 동기화</li>
+                <li>Operational Transformation</li>
+                <li>댓글 및 제안 시스템</li>
+                <li>문서 히스토리 및 버전 관리</li>
+                <li>고급 권한 관리</li>
+              </ul>
+            </div>
           </div>
         </div>
       </Modal>
@@ -436,4 +627,4 @@ const DocumentDetailPage: React.FC = () => {
   );
 };
 
-export default DocumentDetailPage;
+export default EnhancedDocumentDetailPage;
