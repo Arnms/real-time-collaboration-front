@@ -4,6 +4,8 @@ import {
   PlusIcon,
   ArrowLeftIcon,
   DocumentTextIcon,
+  ShareIcon,
+  Cog6ToothIcon,
 } from "@heroicons/react/24/outline";
 import { Button, Modal } from "@/components/ui";
 import { useAuth } from "@/hooks/useAuth";
@@ -22,6 +24,8 @@ import {
 } from "./components/DocumentFilters";
 import { CreateDocumentModal } from "./components/CreateDocumentModal";
 import { CreateFromTemplateModal } from "./components/CreateFromTemplateModal";
+import DocumentShareModal from "./components/DocumentShareModal";
+import DocumentVisibilitySettings from "./components/DocumentVisibilitySettings";
 import type { Document } from "@/types/document.types";
 import { cn } from "@/utils/cn";
 
@@ -45,13 +49,14 @@ const DocumentsPage: React.FC = () => {
     useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showVisibilityModal, setShowVisibilityModal] = useState(false);
 
   // Mutation 훅들
   const deleteDocumentMutation = useDeleteDocument();
   const duplicateDocumentMutation = useDuplicateDocument();
 
   // 필터 상태
-  const [filters, setFilters] = useState<DocumentFilters>({
+  const [filters, setFilters] = useState<DocumentFiltersType>({
     search: "",
     sortBy: "updatedAt",
     sortOrder: "DESC",
@@ -158,6 +163,11 @@ const DocumentsPage: React.FC = () => {
     setShowShareModal(true);
   };
 
+  const handleVisibilitySettings = (document: Document) => {
+    setSelectedDocument(document);
+    setShowVisibilityModal(true);
+  };
+
   const handleDelete = (document: Document) => {
     setSelectedDocument(document);
     setShowDeleteModal(true);
@@ -200,6 +210,12 @@ const DocumentsPage: React.FC = () => {
         error.message || "문서 삭제 중 오류가 발생했습니다."
       );
     }
+  };
+
+  const handleDocumentUpdate = (updatedDocument: Document) => {
+    // 문서가 업데이트되면 목록 새로고침
+    currentQuery.refetch();
+    setSelectedDocument(updatedDocument);
   };
 
   // 헬퍼 함수들
@@ -331,6 +347,9 @@ const DocumentsPage: React.FC = () => {
           emptyMessage={getEmptyMessage()}
           emptyDescription={getEmptyDescription()}
           onShare={activeTab === "my" ? handleShare : undefined}
+          onVisibilitySettings={
+            activeTab === "my" ? handleVisibilitySettings : undefined
+          }
           onDelete={activeTab === "my" ? handleDelete : undefined}
           onDuplicate={handleDuplicate}
           showActions={activeTab === "my"}
@@ -361,38 +380,24 @@ const DocumentsPage: React.FC = () => {
         onSuccess={handleDocumentCreated}
       />
 
-      {/* 공유 모달 */}
-      <Modal
-        isOpen={showShareModal}
-        onClose={() => setShowShareModal(false)}
-        title="문서 공유"
-        footer={
-          <div className="flex justify-end space-x-3">
-            <Button variant="outline" onClick={() => setShowShareModal(false)}>
-              취소
-            </Button>
-            <Button
-              onClick={() => {
-                toast.info("준비 중", "문서 공유 기능은 곧 구현될 예정입니다.");
-                setShowShareModal(false);
-              }}
-            >
-              공유하기
-            </Button>
-          </div>
-        }
-      >
-        <div className="space-y-4">
-          <p className="text-gray-600">
-            "{selectedDocument?.title}" 문서를 다른 사용자와 공유하세요.
-          </p>
-          <div className="p-4 bg-blue-50 rounded-lg">
-            <p className="text-sm text-blue-800">
-              💡 문서 공유 기능은 곧 구현될 예정입니다.
-            </p>
-          </div>
-        </div>
-      </Modal>
+      {/* 문서 공유 모달 */}
+      {selectedDocument && (
+        <DocumentShareModal
+          isOpen={showShareModal}
+          onClose={() => setShowShareModal(false)}
+          document={selectedDocument}
+        />
+      )}
+
+      {/* 문서 공개 설정 모달 */}
+      {selectedDocument && (
+        <DocumentVisibilitySettings
+          isOpen={showVisibilityModal}
+          onClose={() => setShowVisibilityModal(false)}
+          document={selectedDocument}
+          onUpdate={handleDocumentUpdate}
+        />
+      )}
 
       {/* 삭제 확인 모달 */}
       <Modal

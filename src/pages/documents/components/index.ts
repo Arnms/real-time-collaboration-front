@@ -5,4 +5,6 @@ export { CreateDocumentModal } from "./CreateDocumentModal";
 export { CreateFromTemplateModal } from "./CreateFromTemplateModal";
 export { DocumentEditor } from "./DocumentEditor";
 export { CollaborationStatus } from "./CollaborationStatus";
+export { default as DocumentShareModal } from "./DocumentShareModal";
+export { default as DocumentVisibilitySettings } from "./DocumentVisibilitySettings";
 export type { DocumentFilters as DocumentFiltersType } from "./DocumentFilters";
