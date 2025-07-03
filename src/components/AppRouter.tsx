@@ -9,6 +9,7 @@ import RegisterPage from "@/pages/auth/RegisterPage";
 import DashboardPage from "@/pages/dashboard/DashboardPage";
 import DocumentsPage from "@/pages/documents/DocumentsPage";
 import DocumentDetailPage from "@/pages/documents/DocumentDetailPage";
+import DocumentSharingDemo from "@/pages/documents/components/DocumentSharingDemo";
 
 // Protected Route 컴포넌트
 interface ProtectedRouteProps {
@@ -107,6 +108,14 @@ export const AppRouter: React.FC = () => {
         element={
           <ProtectedRoute>
             <DocumentDetailPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/documents/demo"
+        element={
+          <ProtectedRoute>
+            <DocumentSharingDemo />
           </ProtectedRoute>
         }
       />
