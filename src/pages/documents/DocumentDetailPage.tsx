@@ -1,31 +1,402 @@
-import { Button, Input, Spinner, Modal } from "@/components/ui";
+import React, { useState, useEffect, useCallback } from "react";
+import { useParams, useNavigate, Link } from "react-router-dom";
+import {
+  ArrowLeftIcon,
+  ShareIcon,
+  EllipsisHorizontalIcon,
+  DocumentDuplicateIcon,
+  TrashIcon,
+  ClockIcon,
+  ExclamationTriangleIcon,
+  CheckCircleIcon,
+  WifiIcon,
+  UserGroupIcon,
+} from "@heroicons/react/24/outline";
+import { Button, Modal, Input, Spinner } from "@/components/ui";
 import { useAuth } from "@/hooks/useAuth";
+import { useToastContext } from "@/providers/ToastProvider";
 import { useCollaboration } from "@/hooks/useCollaboration";
 import {
   useDocument,
-  useMyDocumentPermission,
   useUpdateDocument,
   useDeleteDocument,
   useDuplicateDocument,
+  useMyDocumentPermission,
 } from "@/hooks/useDocuments";
-import { useToastContext } from "@/providers/ToastProvider";
 import { cn } from "@/utils/cn";
-import {
-  CheckCircleIcon,
-  WifiIcon,
-  ExclamationTriangleIcon,
-  ArrowLeftIcon,
-  ClockIcon,
-  DocumentDuplicateIcon,
-  ShareIcon,
-  TrashIcon,
-  UserGroupIcon,
-} from "@heroicons/react/24/outline";
-import { useState, useEffect, useCallback } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
-import { EnhancedDocumentEditor } from "./components";
-import { CollaboratorCursor } from "./components/DocumentEditor";
+import type { Document } from "@/types/document.types";
 
+// Enhanced Document Editor 타입 정의
+interface CollaboratorCursor {
+  id: string;
+  username: string;
+  color: string;
+  position: number;
+  selection?: { start: number; end: number };
+  isTyping?: boolean;
+}
+
+interface EnhancedDocumentEditorProps {
+  content: string;
+  onChange: (content: string) => void;
+  onSave?: () => Promise<void>;
+  onSelectionChange?: (selection: { start: number; end: number }) => void;
+  readOnly?: boolean;
+  placeholder?: string;
+  autoSave?: boolean;
+  autoSaveInterval?: number;
+  collaborators?: CollaboratorCursor[];
+  className?: string;
+}
+
+// Enhanced Document Editor 컴포넌트 (import 대신 임시로 여기에 정의)
+const EnhancedDocumentEditor: React.FC<EnhancedDocumentEditorProps> = ({
+  content,
+  onChange,
+  onSave,
+  onSelectionChange,
+  readOnly = false,
+  placeholder = "문서 내용을 입력하세요...",
+  autoSave = true,
+  autoSaveInterval = 3000,
+  collaborators = [],
+  className,
+}) => {
+  const editorRef = React.useRef<HTMLDivElement>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isComposing, setIsComposing] = useState(false);
+  const [undoStack, setUndoStack] = useState<any[]>([]);
+  const [redoStack, setRedoStack] = useState<any[]>([]);
+  const [currentSelection, setCurrentSelection] = useState({
+    start: 0,
+    end: 0,
+  });
+  const lastContentRef = React.useRef(content);
+
+  // 자동 저장 설정
+  React.useEffect(() => {
+    let timeout: NodeJS.Timeout;
+    if (autoSave && onSave && hasUnsavedChanges && !isComposing) {
+      timeout = setTimeout(async () => {
+        if (hasUnsavedChanges) {
+          setIsSaving(true);
+          try {
+            await onSave();
+            setLastSaved(new Date());
+            setHasUnsavedChanges(false);
+          } catch (error) {
+            console.error("Auto save failed:", error);
+          } finally {
+            setIsSaving(false);
+          }
+        }
+      }, autoSaveInterval);
+    }
+    return () => clearTimeout(timeout);
+  }, [autoSave, onSave, hasUnsavedChanges, autoSaveInterval, isComposing]);
+
+  // 에디터 내용 업데이트
+  React.useEffect(() => {
+    if (editorRef.current && editorRef.current.innerHTML !== content) {
+      const selection = window.getSelection();
+      const cursorPos = selection?.anchorOffset || 0;
+
+      editorRef.current.innerHTML = content;
+
+      // 커서 위치 복원 시도
+      try {
+        if (selection && editorRef.current.firstChild) {
+          const range = document.createRange();
+          const textNode = editorRef.current.firstChild;
+          const maxPos = textNode.textContent?.length || 0;
+          range.setStart(textNode, Math.min(cursorPos, maxPos));
+          range.setEnd(textNode, Math.min(cursorPos, maxPos));
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+      } catch (error) {
+        console.warn("Failed to restore cursor position:", error);
+      }
+    }
+  }, [content]);
+
+  const handleContentChange = React.useCallback(() => {
+    if (editorRef.current && !readOnly && !isComposing) {
+      const newContent = editorRef.current.innerHTML;
+      if (newContent !== lastContentRef.current) {
+        lastContentRef.current = newContent;
+        onChange(newContent);
+        setHasUnsavedChanges(true);
+      }
+    }
+  }, [onChange, readOnly, isComposing]);
+
+  const handleSelectionChange = React.useCallback(() => {
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      const start = range.startOffset;
+      const end = range.endOffset;
+
+      setCurrentSelection({ start, end });
+      onSelectionChange?.({ start, end });
+    }
+  }, [onSelectionChange]);
+
+  const handleSave = async () => {
+    if (onSave) {
+      setIsSaving(true);
+      try {
+        await onSave();
+        setLastSaved(new Date());
+        setHasUnsavedChanges(false);
+      } catch (error) {
+        console.error("Manual save failed:", error);
+        throw error;
+      } finally {
+        setIsSaving(false);
+      }
+    }
+  };
+
+  const applyFormat = (command: string, value?: string) => {
+    if (readOnly) return;
+    document.execCommand(command, false, value);
+    handleContentChange();
+    editorRef.current?.focus();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (readOnly) return;
+
+    const isCtrl = e.ctrlKey || e.metaKey;
+
+    if (isCtrl && e.key === "s") {
+      e.preventDefault();
+      handleSave();
+      return;
+    }
+
+    if (isCtrl && e.key === "b") {
+      e.preventDefault();
+      applyFormat("bold");
+      return;
+    }
+
+    if (isCtrl && e.key === "i") {
+      e.preventDefault();
+      applyFormat("italic");
+      return;
+    }
+
+    if (isCtrl && e.key === "u") {
+      e.preventDefault();
+      applyFormat("underline");
+      return;
+    }
+  };
+
+  const getLastSavedText = () => {
+    if (isSaving) return "저장 중...";
+    if (hasUnsavedChanges) return "저장되지 않은 변경사항";
+    if (!lastSaved) return "";
+
+    const now = new Date();
+    const diffMs = now.getTime() - lastSaved.getTime();
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+
+    if (diffMinutes === 0) return "방금 저장됨";
+    if (diffMinutes < 60) return `${diffMinutes}분 전 저장됨`;
+    return lastSaved.toLocaleTimeString("ko-KR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  return (
+    <div className={cn("flex flex-col h-full", className)}>
+      {/* 툴바 */}
+      {!readOnly && (
+        <div className="flex items-center justify-between p-3 border-b border-gray-200 bg-white sticky top-0 z-20">
+          <div className="flex items-center space-x-1 overflow-x-auto">
+            {/* 텍스트 포맷팅 */}
+            <div className="flex items-center space-x-1 pr-3 border-r border-gray-200">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => applyFormat("bold")}
+                className="h-8 w-8 p-0"
+                title="굵게 (Ctrl+B)"
+              >
+                <strong className="text-sm">B</strong>
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => applyFormat("italic")}
+                className="h-8 w-8 p-0"
+                title="기울임 (Ctrl+I)"
+              >
+                <em className="text-sm">I</em>
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => applyFormat("underline")}
+                className="h-8 w-8 p-0"
+                title="밑줄 (Ctrl+U)"
+              >
+                <span className="text-sm underline">U</span>
+              </Button>
+            </div>
+
+            {/* 리스트 */}
+            <div className="flex items-center space-x-1 pr-3 border-r border-gray-200">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => applyFormat("insertUnorderedList")}
+                className="h-8 w-8 p-0"
+                title="글머리 기호"
+              >
+                •
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => applyFormat("insertOrderedList")}
+                className="h-8 w-8 p-0"
+                title="번호 매기기"
+              >
+                1.
+              </Button>
+            </div>
+
+            {/* 기타 도구 */}
+            <div className="flex items-center space-x-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const url = prompt("링크 URL을 입력하세요:");
+                  if (url) applyFormat("createLink", url);
+                }}
+                className="h-8 px-2 text-xs"
+                title="링크 삽입"
+              >
+                링크
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const color = prompt(
+                    "텍스트 색상을 입력하세요 (예: #ff0000):"
+                  );
+                  if (color) applyFormat("foreColor", color);
+                }}
+                className="h-8 px-2 text-xs"
+                title="텍스트 색상"
+              >
+                색상
+              </Button>
+            </div>
+          </div>
+
+          {/* 저장 상태 및 버튼 */}
+          <div className="flex items-center space-x-3 flex-shrink-0">
+            <div className="flex items-center space-x-2 text-sm text-gray-500">
+              {isSaving && <Spinner size="xs" />}
+              <span className={hasUnsavedChanges ? "text-orange-600" : ""}>
+                {getLastSavedText()}
+              </span>
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSave}
+              disabled={isSaving}
+              loading={isSaving}
+              className={
+                hasUnsavedChanges ? "border-orange-300 text-orange-700" : ""
+              }
+            >
+              저장
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* 에디터 영역 */}
+      <div className="flex-1 relative overflow-hidden">
+        <div
+          ref={editorRef}
+          contentEditable={!readOnly}
+          onInput={handleContentChange}
+          onKeyDown={handleKeyDown}
+          onMouseUp={handleSelectionChange}
+          onKeyUp={handleSelectionChange}
+          onCompositionStart={() => setIsComposing(true)}
+          onCompositionEnd={() => {
+            setIsComposing(false);
+            handleContentChange();
+          }}
+          className={cn(
+            "w-full h-full p-6 text-base leading-relaxed resize-none border-0 focus:outline-none overflow-y-auto",
+            "prose prose-lg max-w-none",
+            readOnly ? "bg-gray-50 cursor-default" : "bg-white cursor-text"
+          )}
+          style={{ minHeight: "500px" }}
+          suppressContentEditableWarning={true}
+          data-placeholder={placeholder}
+        />
+
+        {/* 협업자 커서 표시 */}
+        {collaborators.map((collaborator) => (
+          <div
+            key={collaborator.id}
+            className="absolute pointer-events-none z-10"
+            style={{
+              left: `${Math.min(collaborator.position * 8, 90)}%`,
+              top: "120px",
+            }}
+          >
+            <div
+              className="w-0.5 h-6 relative"
+              style={{ backgroundColor: collaborator.color }}
+            >
+              <div
+                className="absolute -top-8 left-0 px-2 py-1 text-xs text-white rounded whitespace-nowrap shadow-lg"
+                style={{ backgroundColor: collaborator.color }}
+              >
+                {collaborator.username}
+                {collaborator.isTyping && (
+                  <span className="ml-1 animate-pulse">✎</span>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {/* 플레이스홀더 */}
+        {!content && !readOnly && (
+          <div className="absolute top-6 left-6 text-gray-400 pointer-events-none select-none">
+            {placeholder}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// 메인 DocumentDetailPage 컴포넌트
 const EnhancedDocumentDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
